@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wnba-quant"
+version = "0.1.0"
+description = "Polars-first pipeline for WNBA player prop modeling with Poisson baselines and optional XGBoost."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "polars>=1.21",
+]
+
+[project.optional-dependencies]
+ml = ["xgboost>=2.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+wnba-props = "wnba_quant.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

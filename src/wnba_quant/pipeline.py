@@ -1,0 +1,68 @@
+"""End-to-end WNBA player prop modeling pipeline."""
+
+from __future__ import annotations
+
+import polars as pl
+
+from .config import PropModelConfig
+from .distributions import prop_probabilities
+from .features import (
+    attach_prop_board_features,
+    latest_player_features,
+    prepare_player_game_features,
+)
+from .models import PoissonPropModel, XGBoostPropModel
+
+
+class PlayerPropPipeline:
+    """Train a prop model and score a current WNBA player prop board."""
+
+    def __init__(self, config: PropModelConfig | None = None) -> None:
+        self.config = config or PropModelConfig()
+        self.model = self._build_model()
+
+    def _build_model(self):
+        if self.config.model_type == "poisson":
+            return PoissonPropModel(
+                target=self.config.target,
+                shrinkage_games=self.config.poisson_shrinkage_games,
+            )
+        return XGBoostPropModel(self.config)
+
+    def fit(self, game_logs: pl.DataFrame) -> "PlayerPropPipeline":
+        """Engineer historical features and fit the selected model backend."""
+
+        self.training_features_ = prepare_player_game_features(
+            game_logs=game_logs,
+            target=self.config.target,
+            rolling_windows=self.config.rolling_windows,
+        )
+        trainable = self.training_features_.filter(
+            pl.col("games_played_entering") >= self.config.min_history_games
+        )
+        self.model.fit(trainable)
+        self.latest_features_ = latest_player_features(self.training_features_)
+        return self
+
+    def score_props(self, prop_board: pl.DataFrame) -> pl.DataFrame:
+        """Project means and over/under probabilities for a prop board."""
+
+        if not hasattr(self, "latest_features_"):
+            raise RuntimeError("PlayerPropPipeline must be fit before score_props")
+
+        scored = attach_prop_board_features(prop_board, self.latest_features_)
+        means = self.model.predict(scored)
+        scored = scored.with_columns(pl.Series("projected_mean", means))
+
+        probabilities = [
+            prop_probabilities(mean=float(mean), line=float(line))
+            for mean, line in scored.select(["projected_mean", "line"]).iter_rows()
+        ]
+        return scored.with_columns(
+            [
+                pl.Series("prob_under", [item[0] for item in probabilities]),
+                pl.Series("prob_push", [item[1] for item in probabilities]),
+                pl.Series("prob_over", [item[2] for item in probabilities]),
+                (pl.col("projected_mean") - pl.col("line")).alias("edge_to_line"),
+            ]
+        ).sort("edge_to_line", descending=True)
