@@ -12,6 +12,7 @@ from .features import (
     prepare_player_game_features,
 )
 from .models import PoissonPropModel, XGBoostPropModel
+from .odds import expected_value, implied_probability
 
 
 class PlayerPropPipeline:
@@ -54,7 +55,13 @@ class PlayerPropPipeline:
         if not hasattr(self, "next_game_features_"):
             raise RuntimeError("PlayerPropPipeline must be fit before score_props")
 
-        scored = attach_prop_board_features(prop_board, self.next_game_features_)
+        market_props = prop_board.filter(pl.col("market") == self.config.market_name)
+        if market_props.is_empty():
+            raise ValueError(
+                f"prop_board contains no rows for market '{self.config.market_name}'"
+            )
+
+        scored = attach_prop_board_features(market_props, self.next_game_features_)
         means = self.model.predict(scored)
         scored = scored.with_columns(pl.Series("projected_mean", means))
 
@@ -62,11 +69,60 @@ class PlayerPropPipeline:
             prop_probabilities(mean=float(mean), line=float(line))
             for mean, line in scored.select(["projected_mean", "line"]).iter_rows()
         ]
-        return scored.with_columns(
+        scored = scored.with_columns(
             [
                 pl.Series("prob_under", [item[0] for item in probabilities]),
                 pl.Series("prob_push", [item[1] for item in probabilities]),
                 pl.Series("prob_over", [item[2] for item in probabilities]),
                 (pl.col("projected_mean") - pl.col("line")).alias("edge_to_line"),
             ]
-        ).sort("edge_to_line", descending=True)
+        )
+        return self._with_optional_odds_edges(scored).sort("edge_to_line", descending=True)
+
+    def _with_optional_odds_edges(self, scored: pl.DataFrame) -> pl.DataFrame:
+        """Add odds-derived break-even and EV columns when odds are present."""
+
+        expressions: list[pl.Expr] = []
+        if "over_odds" in scored.columns:
+            expressions.extend(
+                [
+                    pl.col("over_odds")
+                    .map_elements(
+                        lambda odds: None if odds is None else implied_probability(odds),
+                        return_dtype=pl.Float64,
+                    )
+                    .alias("implied_prob_over"),
+                    pl.struct(["prob_over", "prob_under", "over_odds"])
+                    .map_elements(
+                        lambda row: None
+                        if row["over_odds"] is None
+                        else expected_value(
+                            row["prob_over"], row["prob_under"], row["over_odds"]
+                        ),
+                        return_dtype=pl.Float64,
+                    )
+                    .alias("ev_over"),
+                ]
+            )
+        if "under_odds" in scored.columns:
+            expressions.extend(
+                [
+                    pl.col("under_odds")
+                    .map_elements(
+                        lambda odds: None if odds is None else implied_probability(odds),
+                        return_dtype=pl.Float64,
+                    )
+                    .alias("implied_prob_under"),
+                    pl.struct(["prob_under", "prob_over", "under_odds"])
+                    .map_elements(
+                        lambda row: None
+                        if row["under_odds"] is None
+                        else expected_value(
+                            row["prob_under"], row["prob_over"], row["under_odds"]
+                        ),
+                        return_dtype=pl.Float64,
+                    )
+                    .alias("ev_under"),
+                ]
+            )
+        return scored.with_columns(expressions) if expressions else scored

@@ -17,6 +17,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", required=True, help="Output CSV path for scored props.")
     parser.add_argument("--target", default="points", help="Target stat to model.")
     parser.add_argument(
+        "--market",
+        default=None,
+        help="Prop-board market value to score; defaults to --target.",
+    )
+    parser.add_argument(
         "--model-type",
         choices=["poisson", "xgboost"],
         default="poisson",
@@ -27,7 +32,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    config = PropModelConfig(target=args.target, model_type=args.model_type)
+    config = PropModelConfig(
+        target=args.target, model_type=args.model_type, market=args.market
+    )
     pipeline = PlayerPropPipeline(config)
     game_logs = pl.read_csv(args.game_logs, try_parse_dates=True)
     prop_board = pl.read_csv(args.prop_board, try_parse_dates=True)

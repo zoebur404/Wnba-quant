@@ -14,6 +14,8 @@ class PropModelConfig:
             ``assists``, or a derived stat that is present in the input table.
         model_type: ``"poisson"`` for a fast count-distribution baseline or
             ``"xgboost"`` for a gradient-boosted regression model.
+        market: Prop-board market name to score. If omitted, the target column
+            name is used, such as ``points``.
         rolling_windows: Game counts used for rolling player form features.
         min_history_games: Minimum player history required before a prediction
             row is considered modelable.
@@ -27,6 +29,7 @@ class PropModelConfig:
 
     target: str = "points"
     model_type: str = "poisson"
+    market: str | None = None
     rolling_windows: tuple[int, ...] = (3, 5, 10)
     min_history_games: int = 3
     poisson_shrinkage_games: float = 6.0
@@ -46,7 +49,15 @@ class PropModelConfig:
     def __post_init__(self) -> None:
         if self.model_type not in {"poisson", "xgboost"}:
             raise ValueError("model_type must be either 'poisson' or 'xgboost'")
+        if self.market is not None and not self.market:
+            raise ValueError("market must be non-empty when provided")
         if self.min_history_games < 1:
             raise ValueError("min_history_games must be positive")
         if any(window < 1 for window in self.rolling_windows):
             raise ValueError("rolling_windows values must be positive")
+
+    @property
+    def market_name(self) -> str:
+        """Prop-board market value that should be scored by this model."""
+
+        return self.market or self.target

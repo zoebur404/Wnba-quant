@@ -33,8 +33,12 @@ Poisson baseline or an optional XGBoost regression backend.
 - `market`
 - `line`
 
-Any sportsbook, price, game, or injury-context columns are preserved in the
-scored output.
+The pipeline scores only the configured market, which defaults to the target
+stat name. If your prop feed uses labels such as `player_points`, pass
+`--market player_points` or set `PropModelConfig(market="player_points")`.
+Optional `over_odds` and `under_odds` American-odds columns add break-even
+probability and one-unit expected-value columns to the scored output. Any other
+sportsbook, price, game, or injury-context columns are preserved.
 
 ## Usage
 
@@ -57,6 +61,7 @@ wnba-props \
   --game-logs data/game_logs.csv \
   --prop-board data/current_props.csv \
   --target points \
+  --market points \
   --model-type poisson \
   --output outputs/scored_points_props.csv
 ```
@@ -68,6 +73,7 @@ wnba-props \
   --game-logs data/game_logs.csv \
   --prop-board data/current_props.csv \
   --target points \
+  --market points \
   --model-type xgboost \
   --output outputs/scored_points_props.csv
 ```
@@ -82,7 +88,9 @@ logs = pl.read_csv("data/game_logs.csv", try_parse_dates=True)
 props = pl.read_csv("data/current_props.csv", try_parse_dates=True)
 
 pipeline = PlayerPropPipeline(
-    PropModelConfig(target="points", model_type="poisson", min_history_games=3)
+    PropModelConfig(
+        target="points", market="points", model_type="poisson", min_history_games=3
+    )
 )
 scored = pipeline.fit(logs).score_props(props)
 scored.write_csv("outputs/scored_points_props.csv")

@@ -4,6 +4,7 @@ import polars as pl
 
 from wnba_quant import PlayerPropPipeline, PropModelConfig
 from wnba_quant.distributions import prop_probabilities
+from wnba_quant.odds import expected_value, implied_probability
 from wnba_quant.features import prepare_next_game_features, prepare_player_game_features
 
 
@@ -55,6 +56,8 @@ def test_poisson_pipeline_scores_prop_board() -> None:
             "player_name": ["A", "B"],
             "market": ["points", "points"],
             "line": [16.5, 9.5],
+            "over_odds": [-110, 105],
+            "under_odds": [-110, -125],
         }
     )
 
@@ -63,12 +66,42 @@ def test_poisson_pipeline_scores_prop_board() -> None:
     )
     scored = pipeline.fit(sample_game_logs()).score_props(prop_board)
 
-    assert {"projected_mean", "prob_over", "prob_under", "edge_to_line"}.issubset(
-        scored.columns
-    )
+    assert {
+        "projected_mean",
+        "prob_over",
+        "prob_under",
+        "edge_to_line",
+        "implied_prob_over",
+        "ev_over",
+        "implied_prob_under",
+        "ev_under",
+    }.issubset(scored.columns)
     assert scored.height == 2
     assert scored["prob_over"].min() >= 0
     assert scored["prob_over"].max() <= 1
+
+
+def test_pipeline_filters_to_configured_market() -> None:
+    prop_board = pl.DataFrame(
+        {
+            "player_id": [1, 1],
+            "player_name": ["A", "A"],
+            "market": ["points", "rebounds"],
+            "line": [16.5, 4.5],
+        }
+    )
+
+    pipeline = PlayerPropPipeline(
+        PropModelConfig(target="points", model_type="poisson", min_history_games=1)
+    )
+    scored = pipeline.fit(sample_game_logs()).score_props(prop_board)
+
+    assert scored["market"].to_list() == ["points"]
+
+
+def test_american_odds_helpers() -> None:
+    assert round(implied_probability(-110), 6) == 0.52381
+    assert expected_value(win_probability=0.55, loss_probability=0.45, odds=-110) > 0
 
 
 def test_poisson_probabilities_support_push_lines() -> None:
