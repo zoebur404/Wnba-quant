@@ -1,0 +1,8 @@
+numpy>=1.24
+polars>=1.21
+
+[dev]
+pytest>=8.0
+
+[ml]
+xgboost>=2.0
