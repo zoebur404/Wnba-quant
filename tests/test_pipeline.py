@@ -4,7 +4,7 @@ import polars as pl
 
 from wnba_quant import PlayerPropPipeline, PropModelConfig
 from wnba_quant.distributions import prop_probabilities
-from wnba_quant.features import prepare_player_game_features
+from wnba_quant.features import prepare_next_game_features, prepare_player_game_features
 
 
 def sample_game_logs() -> pl.DataFrame:
@@ -39,6 +39,15 @@ def test_feature_engineering_is_leakage_safe() -> None:
     assert player_one["points_roll3"].to_list()[1] == 15
 
 
+def test_next_game_features_include_most_recent_completed_game() -> None:
+    features = prepare_next_game_features(sample_game_logs(), target="points", rolling_windows=(3,))
+    player_one = features.filter(pl.col("player_id") == 1).row(0, named=True)
+
+    assert player_one["games_played_entering"] == 4
+    assert player_one["points_prev"] == 21
+    assert player_one["points_roll3"] == 17
+
+
 def test_poisson_pipeline_scores_prop_board() -> None:
     prop_board = pl.DataFrame(
         {
@@ -68,4 +77,4 @@ def test_poisson_probabilities_support_push_lines() -> None:
     assert under > 0
     assert push > 0
     assert over > 0
-    assert round(under + over, 10) <= 1.0
+    assert round(under + push + over, 10) == 1.0

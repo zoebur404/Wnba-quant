@@ -14,7 +14,7 @@ from .config import PropModelConfig
 def numeric_feature_columns(frame: pl.DataFrame, target: str) -> list[str]:
     """Infer model-ready numeric feature columns from an engineered frame."""
 
-    excluded = {target, "line"}
+    excluded = {target, "line", "player_id"}
     numeric_types = {
         pl.Int8,
         pl.Int16,
@@ -44,8 +44,12 @@ class PoissonPropModel:
     def fit(self, frame: pl.DataFrame) -> "PoissonPropModel":
         if self.target not in frame.columns:
             raise ValueError(f"target column '{self.target}' is required")
+        if frame.is_empty():
+            raise ValueError("No training rows are available for the Poisson model")
 
         self.league_mean_ = float(frame.select(pl.col(self.target).mean()).item())
+        if np.isnan(self.league_mean_):
+            raise ValueError("Poisson target mean is undefined; check training data")
         player_rates = frame.group_by("player_id").agg(
             pl.col(self.target).sum().alias("target_sum"),
             pl.len().alias("games"),

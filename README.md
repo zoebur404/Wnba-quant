@@ -7,11 +7,11 @@ Poisson baseline or an optional XGBoost regression backend.
 
 1. **Ingest historical player game logs** with one row per player-game.
 2. **Engineer leakage-safe features in Polars** by sorting by player/date and
-   shifting rolling player form metrics by one game.
+   shifting rolling player form metrics by one game for walk-forward training.
 3. **Train a model backend**:
    - `poisson`: empirical-Bayes player means shrunk toward the league average.
    - `xgboost`: optional gradient-boosted regression model for mean projections.
-4. **Join the current prop board** to each player's latest historical feature row.
+4. **Build next-game features** that include each player's most recent completed game, then join those rows to the current prop board.
 5. **Convert projected means to probabilities** for over, under, and push outcomes.
 6. **Rank props by edge to line** for downstream review or bankroll logic.
 

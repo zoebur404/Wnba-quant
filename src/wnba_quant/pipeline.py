@@ -8,7 +8,7 @@ from .config import PropModelConfig
 from .distributions import prop_probabilities
 from .features import (
     attach_prop_board_features,
-    latest_player_features,
+    prepare_next_game_features,
     prepare_player_game_features,
 )
 from .models import PoissonPropModel, XGBoostPropModel
@@ -41,16 +41,20 @@ class PlayerPropPipeline:
             pl.col("games_played_entering") >= self.config.min_history_games
         )
         self.model.fit(trainable)
-        self.latest_features_ = latest_player_features(self.training_features_)
+        self.next_game_features_ = prepare_next_game_features(
+            game_logs=game_logs,
+            target=self.config.target,
+            rolling_windows=self.config.rolling_windows,
+        )
         return self
 
     def score_props(self, prop_board: pl.DataFrame) -> pl.DataFrame:
         """Project means and over/under probabilities for a prop board."""
 
-        if not hasattr(self, "latest_features_"):
+        if not hasattr(self, "next_game_features_"):
             raise RuntimeError("PlayerPropPipeline must be fit before score_props")
 
-        scored = attach_prop_board_features(prop_board, self.latest_features_)
+        scored = attach_prop_board_features(prop_board, self.next_game_features_)
         means = self.model.predict(scored)
         scored = scored.with_columns(pl.Series("projected_mean", means))
 

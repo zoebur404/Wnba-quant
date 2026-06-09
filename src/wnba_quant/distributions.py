@@ -22,17 +22,22 @@ def poisson_cdf(k: int, lam: float) -> float:
 
 
 def prop_probabilities(mean: float, line: float) -> tuple[float, float, float]:
-    """Return under, push, and over probabilities for a count prop line."""
+    """Return mutually exclusive under, push, and over probabilities.
+
+    For half-point lines, ``push`` is zero and ``under`` is ``P(X < line)``.
+    For integer lines, ``under`` is ``P(X < line)``, ``push`` is
+    ``P(X == line)``, and ``over`` is ``P(X > line)``.
+    """
 
     floor_line = math.floor(line)
-    under_threshold = math.ceil(line) - 1
-    under = poisson_cdf(under_threshold, mean)
-
-    push = 0.0
     if float(line).is_integer():
-        push = poisson_cdf(floor_line, mean) - poisson_cdf(floor_line - 1, mean)
+        under = poisson_cdf(floor_line - 1, mean)
+        push = poisson_cdf(floor_line, mean) - under
         over = 1.0 - poisson_cdf(floor_line, mean)
     else:
+        under_threshold = math.floor(line)
+        under = poisson_cdf(under_threshold, mean)
+        push = 0.0
         over = 1.0 - under
 
-    return under, max(push, 0.0), max(over, 0.0)
+    return max(under, 0.0), max(push, 0.0), max(over, 0.0)
